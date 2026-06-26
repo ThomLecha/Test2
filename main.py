@@ -42,7 +42,7 @@ df2 = pd.read_csv('20230823-communes-departement-region.csv')
 df1['Commune_normalise'] = df1['Commune'].apply(normaliser_commune)
 df2['nom_commune_normalise'] = df2['nom_commune_postal'].apply(normaliser_commune)
 
-# Faire la jointure
+# Faire la jointure des bases de données
 df_joined = pd.merge(df1, df2, left_on='Commune_normalise', right_on='nom_commune_normalise', how='inner')
 
 # Filtrer les données valides (avec coordonnées et population)
