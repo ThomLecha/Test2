@@ -2,8 +2,26 @@ import pandas as pd
 import unicodedata
 import matplotlib.pyplot as plt
 import re
+import math
 
-# Fonction pour normaliser les noms de communes
+# FONCTION POUR CONVERTIR LES COORDONNEES EN PROJECTION DE MERCATOR
+def mercator_projection(latitude, longitude):
+    """
+    CONVERTIT LES COORDONNEES LATITUDE/LONGITUDE EN PROJECTION MERCATOR
+    - ENTREES: latitude et longitude en degrés
+    - SORTIES: x (longitude) et y (latitude projetée) en unités Mercator
+    """
+    # X RESTE LA LONGITUDE (EN RADIANS)
+    x = math.radians(longitude)
+    
+    # Y EST LA LATITUDE TRANSFORMEE SELON LA PROJECTION MERCATOR
+    # FORMULE: y = ln(tan(π/4 + latitude/2))
+    lat_rad = math.radians(latitude)
+    y = math.log(math.tan(math.pi / 4 + lat_rad / 2))
+    
+    return x, y
+
+# FONCTION POUR NORMALISER LES NOMS DE COMMUNES
 def normaliser_commune(texte):
     """
     Normalise un nom de commune:
@@ -34,26 +52,35 @@ def normaliser_commune(texte):
     texte = ' '.join(texte.split())
     return texte
 
-# Ouvrir les deux fichiers CSV
+# OUVRIR LES DEUX FICHIERS CSV
 df1 = pd.read_csv('donnees_communes.csv', sep=';')
 df2 = pd.read_csv('20230823-communes-departement-region.csv')
 
-# Normaliser les colonnes communes
+# NORMALISER LES COLONNES COMMUNES
 df1['Commune_normalise'] = df1['Commune'].apply(normaliser_commune)
 df2['nom_commune_normalise'] = df2['nom_commune_postal'].apply(normaliser_commune)
 
-# Faire la jointure des bases de données
+# FAIRE LA JOINTURE DES BASES DE DONNEES
 df_joined = pd.merge(df1, df2, left_on='Commune_normalise', right_on='nom_commune_normalise', how='inner')
 
-# Filtrer les données valides (avec coordonnées et population)
+# FILTRER LES DONNEES VALIDES (AVEC COORDONNEES ET POPULATION)
 df_plot = df_joined.dropna(subset=['latitude', 'longitude', 'PTOT']).copy()
+
+# APPLIQUER LA PROJECTION DE MERCATOR AUX COORDONNEES
+mercator_coords = df_plot[['latitude', 'longitude']].apply(
+    lambda row: mercator_projection(row['latitude'], row['longitude']),
+    axis=1,
+    result_type='expand'
+)
+df_plot['x_mercator'] = mercator_coords[0]
+df_plot['y_mercator'] = mercator_coords[1]
 
 print(f"Nombre de points à afficher: {len(df_plot)}")
 print(f"Population min: {df_plot['PTOT'].min()}")
 print(f"Population max: {df_plot['PTOT'].max()}")
 
-# Vérifier Paris, Marseille, Lyon
-print("\n=== Arrondissements détectés ===")
+# VERIFIER PARIS, MARSEILLE, LYON
+print("\n=== ARRONDISSEMENTS DETECTES ===")
 print("Paris:")
 print(df_plot[df_plot['Commune_normalise'].str.contains('PARIS', na=False)][['Commune', 'PTOT', 'code_postal']].head(10))
 print("\nMarseille:")
@@ -61,32 +88,32 @@ print(df_plot[df_plot['Commune_normalise'].str.contains('MARSEILLE', na=False)][
 print("\nLyon:")
 print(df_plot[df_plot['Commune_normalise'].str.contains('LYON', na=False)][['Commune', 'PTOT', 'code_postal']].head(10))
 
-# Créer le nuage de points
+# CREER LE NUAGE DE POINTS AVEC PROJECTION DE MERCATOR
 fig, ax = plt.subplots(figsize=(14, 10))
 
-# Créer le scatter plot avec:
-# - Position: latitude/longitude
-# - Taille: proportionnelle à la population
-# - Couleur: gradiente selon la population
-scatter = ax.scatter(df_plot['longitude'], 
-                     df_plot['latitude'],
-                     s=df_plot['PTOT'] / 10,  # Taille proportionnelle à la population
-                     c=df_plot['PTOT'],  # Couleur selon la population
-                     cmap='twilight',  # Colormap magenta-cyan-magenta
-                     alpha=0.6,  # Transparence
+# CREER LE SCATTER PLOT AVEC PROJECTION MERCATOR:
+# - POSITION: coordonnees Mercator (x_mercator, y_mercator)
+# - TAILLE: proportionnelle à la population
+# - COULEUR: gradient selon la population
+scatter = ax.scatter(df_plot['x_mercator'], 
+                     df_plot['y_mercator'],
+                     s=df_plot['PTOT'] / 10,  # TAILLE PROPORTIONNELLE A LA POPULATION
+                     c=df_plot['PTOT'],  # COULEUR SELON LA POPULATION
+                     cmap='twilight',  # COLORMAP MAGENTA-CYAN-MAGENTA
+                     alpha=0.6,  # TRANSPARENCE
                      edgecolors='black',
                      linewidth=0.5)
 
-# Ajouter la barre de couleur
+# AJOUTER LA BARRE DE COULEUR
 cbar = plt.colorbar(scatter, ax=ax, label='Population')
 
-# Labels et titre
-ax.set_xlabel('Longitude', fontsize=12)
-ax.set_ylabel('Latitude', fontsize=12)
-ax.set_title('Nuage de points - Communes avec populations\n(Taille et couleur proportionnelles à la population)', fontsize=14, fontweight='bold')
+# LABELS ET TITRE
+ax.set_xlabel('Longitude (Mercator, radians)', fontsize=12)
+ax.set_ylabel('Latitude (Mercator, unités log)', fontsize=12)
+ax.set_title('Nuage de points - Communes avec populations\n(Projection de Mercator - Taille et couleur proportionnelles à la population)', fontsize=14, fontweight='bold')
 ax.grid(True, alpha=0.3)
 
-# Sauvegarder et afficher
+# SAUVEGARDER ET AFFICHER
 plt.tight_layout()
 plt.savefig('nuage_points_communes.png', dpi=300, bbox_inches='tight')
 print("\n✅ Graphique sauvegardé en 'nuage_points_communes.png'")
